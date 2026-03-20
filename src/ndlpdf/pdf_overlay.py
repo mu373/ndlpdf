@@ -55,12 +55,8 @@ def _draw_text_layer(c: canvas.Canvas, img_h, ocr_results, debug=False):
         text = result["text"]
         if result["is_vertical"]:
             size = bbox[2] * 3 / 4
-            x = bbox[0] + bbox[2] / 2
-            y = img_h - bbox[1]
         else:
             size = bbox[3]
-            x = bbox[0]
-            y = img_h - (bbox[1] + bbox[3] / 2)
         if size < 1:
             continue
         if debug:
@@ -73,7 +69,18 @@ def _draw_text_layer(c: canvas.Canvas, img_h, ocr_results, debug=False):
                 stroke=1,
             )
         c.setFont(font_name, size)
-        c.drawString(x, y, text)
+        if result["is_vertical"]:
+            # Rotate -90° so the horizontal string renders top-to-bottom,
+            # matching the vertical bounding box.
+            c.saveState()
+            c.translate(bbox[0] + bbox[2] / 2, img_h - bbox[1])
+            c.rotate(-90)
+            c.drawString(0, 0, text)
+            c.restoreState()
+        else:
+            x = bbox[0]
+            y = img_h - (bbox[1] + bbox[3] / 2)
+            c.drawString(x, y, text)
 
 
 def create_text_only_pdf(

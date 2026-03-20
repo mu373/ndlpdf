@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import os
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -128,92 +129,95 @@ def ocr_page(np_image, imgname, detector, rec30, rec50, rec100) -> list[dict]:
     from ocr import RecogLine, process_cascade, process_detector
     from reading_order.xy_cut.eval import eval_xml
 
-    detections, classeslist = process_detector(
-        detector,
-        inputname=imgname,
-        npimage=np_image,
-        outputpath=os.devnull,
-        issaveimg=False,
-    )
-
-    resultobj = [dict(), dict()]
-    resultobj[0][0] = list()
-    for i in range(17):
-        resultobj[1][i] = []
-    for det in detections:
-        xmin, ymin, xmax, ymax = det["box"]
-        conf = det["confidence"]
-        char_count = det["pred_char_count"]
-        if det["class_index"] == 0:
-            resultobj[0][0].append([xmin, ymin, xmax, ymax])
-        resultobj[1][det["class_index"]].append(
-            [xmin, ymin, xmax, ymax, conf, char_count]
+    # Suppress stdout prints from ndlocr-lite internals so they don't
+    # break tqdm progress bar overwriting.
+    with open(os.devnull, "w") as _devnull, contextlib.redirect_stdout(_devnull):
+        detections, classeslist = process_detector(
+            detector,
+            inputname=imgname,
+            npimage=np_image,
+            outputpath=os.devnull,
+            issaveimg=False,
         )
 
-    img_h, img_w = np_image.shape[:2]
-    xmlstr = convert_to_xml_string3(img_w, img_h, imgname, classeslist, resultobj)
-    xmlstr = "<OCRDATASET>" + xmlstr + "</OCRDATASET>"
-    root = ET.fromstring(xmlstr)
-    eval_xml(root, logger=None)
-
-    alllineobj = []
-    for idx, lineobj in enumerate(root.findall(".//LINE")):
-        xmin = int(lineobj.get("X"))
-        ymin = int(lineobj.get("Y"))
-        line_w = int(lineobj.get("WIDTH"))
-        line_h = int(lineobj.get("HEIGHT"))
-        try:
-            pred_char_cnt = float(lineobj.get("PRED_CHAR_CNT"))
-        except (TypeError, ValueError):
-            pred_char_cnt = 100.0
-
-        # Clamp to image bounds
-        xmin = max(0, min(xmin, img_w))
-        ymin = max(0, min(ymin, img_h))
-        x_end = max(0, min(xmin + line_w, img_w))
-        y_end = max(0, min(ymin + line_h, img_h))
-        if x_end <= xmin or y_end <= ymin:
-            continue
-
-        lineimg = np_image[ymin:y_end, xmin:x_end, :]
-        alllineobj.append(RecogLine(lineimg, idx, pred_char_cnt))
-
-    if len(alllineobj) == 0 and len(detections) > 0:
-        page = root.find("PAGE")
-        if page is None:
-            raise ValueError("OCR XML did not include a PAGE element")
-        for idx, det in enumerate(detections):
+        resultobj = [dict(), dict()]
+        resultobj[0][0] = list()
+        for i in range(17):
+            resultobj[1][i] = []
+        for det in detections:
             xmin, ymin, xmax, ymax = det["box"]
+            conf = det["confidence"]
+            char_count = det["pred_char_count"]
+            if det["class_index"] == 0:
+                resultobj[0][0].append([xmin, ymin, xmax, ymax])
+            resultobj[1][det["class_index"]].append(
+                [xmin, ymin, xmax, ymax, conf, char_count]
+            )
+
+        img_h, img_w = np_image.shape[:2]
+        xmlstr = convert_to_xml_string3(img_w, img_h, imgname, classeslist, resultobj)
+        xmlstr = "<OCRDATASET>" + xmlstr + "</OCRDATASET>"
+        root = ET.fromstring(xmlstr)
+        eval_xml(root, logger=None)
+
+        alllineobj = []
+        for idx, lineobj in enumerate(root.findall(".//LINE")):
+            xmin = int(lineobj.get("X"))
+            ymin = int(lineobj.get("Y"))
+            line_w = int(lineobj.get("WIDTH"))
+            line_h = int(lineobj.get("HEIGHT"))
+            try:
+                pred_char_cnt = float(lineobj.get("PRED_CHAR_CNT"))
+            except (TypeError, ValueError):
+                pred_char_cnt = 100.0
+
             # Clamp to image bounds
-            xmin = max(0, min(int(xmin), img_w))
-            ymin = max(0, min(int(ymin), img_h))
-            xmax = max(0, min(int(xmax), img_w))
-            ymax = max(0, min(int(ymax), img_h))
-            line_w = xmax - xmin
-            line_h = ymax - ymin
-            if line_w <= 0 or line_h <= 0:
+            xmin = max(0, min(xmin, img_w))
+            ymin = max(0, min(ymin, img_h))
+            x_end = max(0, min(xmin + line_w, img_w))
+            y_end = max(0, min(ymin + line_h, img_h))
+            if x_end <= xmin or y_end <= ymin:
                 continue
 
-            line_elem = ET.SubElement(page, "LINE")
-            line_elem.set("TYPE", "本文")
-            line_elem.set("X", str(xmin))
-            line_elem.set("Y", str(ymin))
-            line_elem.set("WIDTH", str(line_w))
-            line_elem.set("HEIGHT", str(line_h))
-            line_elem.set("CONF", f"{det['confidence']:0.3f}")
-            pred_char_cnt = det.get("pred_char_count", 100.0)
-            line_elem.set("PRED_CHAR_CNT", f"{pred_char_cnt:0.3f}")
-
-            lineimg = np_image[ymin:ymax, xmin:xmax, :]
+            lineimg = np_image[ymin:y_end, xmin:x_end, :]
             alllineobj.append(RecogLine(lineimg, idx, pred_char_cnt))
 
-    resultlinesall = process_cascade(
-        alllineobj,
-        rec30,
-        rec50,
-        rec100,
-        is_cascade=True,
-    )
+        if len(alllineobj) == 0 and len(detections) > 0:
+            page = root.find("PAGE")
+            if page is None:
+                raise ValueError("OCR XML did not include a PAGE element")
+            for idx, det in enumerate(detections):
+                xmin, ymin, xmax, ymax = det["box"]
+                # Clamp to image bounds
+                xmin = max(0, min(int(xmin), img_w))
+                ymin = max(0, min(int(ymin), img_h))
+                xmax = max(0, min(int(xmax), img_w))
+                ymax = max(0, min(int(ymax), img_h))
+                line_w = xmax - xmin
+                line_h = ymax - ymin
+                if line_w <= 0 or line_h <= 0:
+                    continue
+
+                line_elem = ET.SubElement(page, "LINE")
+                line_elem.set("TYPE", "本文")
+                line_elem.set("X", str(xmin))
+                line_elem.set("Y", str(ymin))
+                line_elem.set("WIDTH", str(line_w))
+                line_elem.set("HEIGHT", str(line_h))
+                line_elem.set("CONF", f"{det['confidence']:0.3f}")
+                pred_char_cnt = det.get("pred_char_count", 100.0)
+                line_elem.set("PRED_CHAR_CNT", f"{pred_char_cnt:0.3f}")
+
+                lineimg = np_image[ymin:ymax, xmin:xmax, :]
+                alllineobj.append(RecogLine(lineimg, idx, pred_char_cnt))
+
+        resultlinesall = process_cascade(
+            alllineobj,
+            rec30,
+            rec50,
+            rec100,
+            is_cascade=True,
+        )
 
     results = []
     for idx, lineobj in enumerate(root.findall(".//LINE")):
