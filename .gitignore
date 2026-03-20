@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+
+# Test PDFs and outputs
+*.pdf
+*.txt
+!plan/*.md
