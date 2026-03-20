@@ -10,6 +10,53 @@ from pathlib import Path
 import ocr
 
 
+# Vertical → standard punctuation mapping.
+# ndlocr-lite outputs vertical presentation forms because that is what the
+# glyphs look like in tategaki.  Normalise to their horizontal equivalents
+# so that downstream text extraction / search works as expected.
+_VERTICAL_PUNCT_TABLE = str.maketrans(
+    {
+        # U+FE10–FE19  Vertical Forms
+        "\uFE10": "\u3001",  # ︐ → 、
+        "\uFE11": "\u3001",  # ︑ → 、
+        "\uFE12": "\u3002",  # ︒ → 。
+        "\uFE13": "\uFF1A",  # ︓ → ：
+        "\uFE14": "\uFF1B",  # ︔ → ；
+        "\uFE15": "\uFF01",  # ︕ → ！
+        "\uFE16": "\uFF1F",  # ︖ → ？
+        "\uFE17": "\u3016",  # ︗ → 〖
+        "\uFE18": "\u3017",  # ︘ → 〗
+        "\uFE19": "\u2026",  # ︙ → …
+        # U+FE30–FE34  CJK Compatibility Forms (leaders / dashes / lines)
+        "\uFE30": "\u2025",  # ︰ → ‥
+        "\uFE31": "\u2014",  # ︱ → —
+        "\uFE32": "\u2013",  # ︲ → –
+        "\uFE33": "\uFF3F",  # ︳ → ＿
+        "\uFE34": "\uFE4F",  # ︴ → ﹏
+        # U+FE35–FE44  CJK Compatibility Forms (brackets)
+        "\uFE35": "\uFF08",  # ︵ → （
+        "\uFE36": "\uFF09",  # ︶ → ）
+        "\uFE37": "\uFF5B",  # ︷ → ｛
+        "\uFE38": "\uFF5D",  # ︸ → ｝
+        "\uFE39": "\u3014",  # ︹ → 〔
+        "\uFE3A": "\u3015",  # ︺ → 〕
+        "\uFE3B": "\u3010",  # ︻ → 【
+        "\uFE3C": "\u3011",  # ︼ → 】
+        "\uFE3D": "\u300A",  # ︽ → 《
+        "\uFE3E": "\u300B",  # ︾ → 》
+        "\uFE3F": "\u3008",  # ︿ → 〈
+        "\uFE40": "\u3009",  # ﹀ → 〉
+        "\uFE41": "\u300C",  # ﹁ → 「
+        "\uFE42": "\u300D",  # ﹂ → 」
+        "\uFE43": "\u300E",  # ﹃ → 『
+        "\uFE44": "\u300F",  # ﹄ → 』
+        # U+FE47–FE48  CJK Compatibility Forms (square brackets)
+        "\uFE47": "\uFF3B",  # ﹇ → ［
+        "\uFE48": "\uFF3D",  # ﹈ → ］
+    }
+)
+
+
 def load_models(device: str = "cpu"):
     """Load ndlocr-lite detection and recognition models.
 
@@ -183,7 +230,7 @@ def ocr_page(np_image, imgname, detector, rec30, rec50, rec100) -> list[dict]:
         results.append(
             {
                 "bbox": [xmin, ymin, line_w, line_h],
-                "text": resultlinesall[idx],
+                "text": resultlinesall[idx].translate(_VERTICAL_PUNCT_TABLE),
                 "is_vertical": line_h > line_w,
                 "confidence": conf,
             }

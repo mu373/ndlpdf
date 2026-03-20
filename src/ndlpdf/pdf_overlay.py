@@ -14,10 +14,13 @@ from reportlab.pdfgen import canvas
 
 
 def _register_fonts() -> None:
-    """Register CID fonts for Japanese text (vertical and horizontal)."""
+    """Register CID fonts for Japanese text.
+
+    All text uses horizontal-mode fonts so that pdftotext (Poppler) can
+    extract the invisible layer reliably.  Vertical CID fonts (WMode=1)
+    cause pdftotext to misread character positions.
+    """
     registered = set(pdfmetrics.getRegisteredFontNames())
-    if "HeiseiMin-W3" not in registered:
-        pdfmetrics.registerFont(UnicodeCIDFont("HeiseiMin-W3", isVertical=True))
     if "HeiseiKakuGo-W5" not in registered:
         pdfmetrics.registerFont(UnicodeCIDFont("HeiseiKakuGo-W5", isVertical=False))
 
@@ -25,7 +28,7 @@ def _register_fonts() -> None:
 def _draw_text_layer(c: canvas.Canvas, img_h, ocr_results, debug=False):
     """Draw OCR text onto a reportlab canvas.
 
-    Uses HeiseiMin-W3 (vertical) and HeiseiKakuGo-W5 (horizontal) CID fonts.
+    All text uses HeiseiKakuGo-W5 (horizontal mode) for pdftotext compatibility.
     Coordinates are in the displayed image space (y-down for bbox, converted
     to PDF y-up internally).
 
@@ -41,6 +44,7 @@ def _draw_text_layer(c: canvas.Canvas, img_h, ocr_results, debug=False):
         If True, draw visible red text and blue bounding boxes.
     """
     _register_fonts()
+    font_name = "HeiseiKakuGo-W5"
     if debug:
         c.setFillColor(red, alpha=0.3)
         c.setStrokeColor(blue, alpha=0.5)
@@ -50,12 +54,10 @@ def _draw_text_layer(c: canvas.Canvas, img_h, ocr_results, debug=False):
         bbox = result["bbox"]
         text = result["text"]
         if result["is_vertical"]:
-            font_name = "HeiseiMin-W3"
             size = bbox[2] * 3 / 4
             x = bbox[0] + bbox[2] / 2
             y = img_h - bbox[1]
         else:
-            font_name = "HeiseiKakuGo-W5"
             size = bbox[3]
             x = bbox[0]
             y = img_h - (bbox[1] + bbox[3] / 2)
