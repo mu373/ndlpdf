@@ -10,7 +10,7 @@ requires-python = ">=3.12"
 license = "MIT"
 dependencies = [
     "ndlocr-lite",
-    "pypdf>=4.0",
+    "pypdf>=6.13.3",
     "pypdfium2",
     "reportlab",
     "numpy",
